@@ -12,12 +12,14 @@ const Item = require("./models/products.model");
 const orderRoutes = require("./routes/orders.routes");
 const comboRoutes = require("./routes/combos.routes");
 const attendanceRoutes = require("./routes/attendance.routes");
+const faceRoutes = require("./routes/face.routes");
 
 dotenv.config();
 const app = express();
 
 // --- MIDDLEWARES ---
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));  // Tăng giới hạn để chứa ảnh base64
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cors());            // Quan trọng: Cho phép mọi nguồn (Android/Web) gọi vào
 app.use(morgan("dev"));     // In log ngắn gọn ra console
 
@@ -131,8 +133,11 @@ app.use("/orders", orderRoutes);
 // Routes combos
 app.use("/combos", comboRoutes);
 
-// Routes attendance
-app.use("/attendance", attendanceRoutes);
+// Routes attendance (check-in/check-out đã được xóa)
+// app.use("/attendance", attendanceRoutes);
+
+// Routes face recognition
+app.use("/face", faceRoutes);
 
 // Test Connection
 app.get("/testconnection", (req, res) => res.json("Connection OK"));

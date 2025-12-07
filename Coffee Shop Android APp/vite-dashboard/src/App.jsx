@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import LoginPage from './components/LoginPage'
 import OrderManager from './components/OrderManager'
 import ComboManager from './components/ComboManager'
-import CheckInOut from './components/CheckInOut'
 import './App.css'
 
 function App() {
@@ -62,12 +61,6 @@ function App() {
 
       <div className="tab-navigation">
         <button 
-          className={`tab-btn ${activeTab === 'checkinout' ? 'active' : ''}`}
-          onClick={() => setActiveTab('checkinout')}
-        >
-          📸 Check In/Out
-        </button>
-        <button 
           className={`tab-btn ${activeTab === 'orders' ? 'active' : ''}`}
           onClick={() => setActiveTab('orders')}
         >
@@ -82,7 +75,6 @@ function App() {
       </div>
 
       <div className="tab-content">
-        {activeTab === 'checkinout' && <CheckInOut user={user} />}
         {activeTab === 'orders' && <OrderManager />}
         {activeTab === 'combos' && <ComboManager />}
       </div>
