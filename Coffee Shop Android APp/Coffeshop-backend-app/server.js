@@ -11,6 +11,7 @@ const User = require("./models/users.model");
 const Item = require("./models/products.model");
 const orderRoutes = require("./routes/orders.routes");
 const comboRoutes = require("./routes/combos.routes");
+const attendanceRoutes = require("./routes/attendance.routes");
 
 dotenv.config();
 const app = express();
@@ -129,6 +130,9 @@ app.use("/orders", orderRoutes);
 
 // Routes combos
 app.use("/combos", comboRoutes);
+
+// Routes attendance
+app.use("/attendance", attendanceRoutes);
 
 // Test Connection
 app.get("/testconnection", (req, res) => res.json("Connection OK"));

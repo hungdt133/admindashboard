@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import "./OrderManager.css";
 
-// --- 1. IMPORT HÌNH ẢNH TỪ ASSETS (Cập nhật theo danh sách thực tế của bạn) ---
+// Import hình ảnh
 import imgBacXiu from "../assets/bac-xiu.jpg";
 import imgLava from "../assets/banh-socola-lava.jpg";
 import imgCroissant from "../assets/banh-sung-bo-croissants.jpg";
@@ -12,7 +12,7 @@ import imgEspresso from "../assets/espresso-macchiato.jpg";
 import imgLatte from "../assets/latte-caramel-da-xay.jpg";
 import imgRedVelvet from "../assets/red-velvet-cupcake.jpg";
 import imgSinhToBo from "../assets/sinh-to-bo.jpg";
-import imgTiramisu from "../assets/tiramisiu.jpg"; // Lưu ý: file của bạn đang đặt tên là "tiramisiu" (thừa chữ i)
+import imgTiramisu from "../assets/tiramisiu.jpg";
 import imgTraDao from "../assets/tra-dao-cam-sa.jpg";
 import imgTraSua from "../assets/tra-sua.jpg";
 
@@ -24,31 +24,33 @@ const OrderManager = () => {
 
   const API_URL = "http://localhost:3000";
 
-  // --- 2. TẠO TỪ ĐIỂN ÁNH XẠ ẢNH (LOGIC MỚI) ---
   const getProductImage = (productName) => {
     if (!productName) return imgCaPheDen; 
-    
     const name = productName.toLowerCase(); 
 
-    // Nhóm Cà phê
+    if (name.includes("combo")) {
+        if (name.includes("sáng") || name.includes("tỉnh")) return imgCaPheDen;
+        if (name.includes("trà") || name.includes("chill")) return imgTraDao;
+        if (name.includes("béo")) return imgBacXiu;
+        if (name.includes("bữa xế")) return imgSinhToBo;
+        if (name.includes("đôi") || name.includes("bạn")) return imgTraSua;
+        return imgCroissant;
+    }
+
     if (name.includes("bạc xỉu")) return imgBacXiu;
     if (name.includes("sữa đá") || name.includes("nâu đá")) return imgCaPheSuaDa;
     if (name.includes("đen") || name.includes("black")) return imgCaPheDen;
     if (name.includes("espresso") || name.includes("macchiato")) return imgEspresso;
     if (name.includes("latte") || name.includes("caramel")) return imgLatte;
-
-    // Nhóm Trà & Sinh tố
     if (name.includes("trà đào") || name.includes("cam sả")) return imgTraDao;
     if (name.includes("trà sữa") || name.includes("trân châu")) return imgTraSua;
     if (name.includes("sinh tố") || name.includes("bơ")) return imgSinhToBo;
-
-    // Nhóm Bánh
     if (name.includes("sung bò") || name.includes("croissant")) return imgCroissant;
     if (name.includes("lava") || name.includes("socola")) return imgLava;
     if (name.includes("red velvet") || name.includes("cupcake")) return imgRedVelvet;
     if (name.includes("tiramisu")) return imgTiramisu;
 
-    return imgCaPheDen; // Mặc định
+    return imgCaPheDen;
   };
 
   const fetchOrders = async () => {
@@ -114,6 +116,7 @@ const OrderManager = () => {
       case "Delivering": return "status-delivering";
       case "Delivered": return "status-delivered";
       case "Cancelled": return "status-cancelled";
+      case "Completed": return "status-delivered";
       default: return "";
     }
   };
@@ -140,7 +143,7 @@ const OrderManager = () => {
             <tbody>
               {orders.map((order) => (
                 <tr key={order._id}>
-                  <td>#{order._id.slice(-6).toUpperCase()}</td>
+                  <td>#{order._id ? order._id.slice(-6).toUpperCase() : "N/A"}</td>
                   <td>{formatDate(order.orderDate)}</td>
                   <td>
                     <div className="customer-info">
@@ -171,7 +174,7 @@ const OrderManager = () => {
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Chi tiết đơn: #{selectedOrder._id.slice(-6).toUpperCase()}</h3>
+              <h3>Chi tiết đơn: #{selectedOrder._id ? selectedOrder._id.slice(-6).toUpperCase() : "N/A"}</h3>
               <span className="close-btn" onClick={closeModal}>&times;</span>
             </div>
 
@@ -189,8 +192,6 @@ const OrderManager = () => {
                 <ul className="item-list">
                   {selectedOrder.items.map((item, index) => (
                     <li key={index} className="item-row" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                      
-                      {/* --- 3. HIỂN THỊ ẢNH --- */}
                       <img 
                         src={getProductImage(item.productName)} 
                         alt={item.productName} 
@@ -198,17 +199,27 @@ const OrderManager = () => {
                       />
 
                       <div className="item-details" style={{ flex: 1 }}>
-                        <span className="item-name">
-                            {item.quantity}x <strong>{item.productName}</strong> ({item.sizeChosen})
-                        </span>
+                        <div className="item-name-row">
+                            <span className="qty-tag">{item.quantity}x</span>
+                            <strong>{item.productName}</strong>
+                            {item.sizeChosen && <span className="size-tag">{item.sizeChosen}</span>}
+                        </div>
                         
                         <div className="item-options">
-                           📝 {item.iceLevel} đá, {item.sugarLevel} đường
-                           <br/>
+                           {item.iceLevel && item.iceLevel !== "N/A" && item.sugarLevel && item.sugarLevel !== "N/A" ? (
+                             <>📝 {item.iceLevel} đá, {item.sugarLevel} đường<br/></>
+                           ) : null}
+                           
                            {item.chosenToppings && item.chosenToppings.length > 0 && (
                                <span className="toppings">
                                  + Topping: {item.chosenToppings.map(t => t.name).join(", ")}
                                </span>
+                           )}
+
+                           {item.itemNote && (
+                               <div style={{color: '#e67e22', fontStyle: 'italic', fontSize: '0.85rem', marginTop: '4px'}}>
+                                   Note: {item.itemNote}
+                               </div>
                            )}
                         </div>
                       </div>
@@ -220,12 +231,12 @@ const OrderManager = () => {
                 </ul>
 
                 <div className="order-summary">
-                   <div className="sum-row"><span>Tạm tính:</span> <span>{formatMoney(selectedOrder.subtotal)}</span></div>
-                   <div className="sum-row"><span>Phí ship:</span> <span>{formatMoney(selectedOrder.shippingFee)}</span></div>
+                   <div className="sum-row"><span>Tạm tính:</span> <span>{formatMoney(selectedOrder.subtotal || 0)}</span></div>
+                   <div className="sum-row"><span>Phí ship:</span> <span>{formatMoney(selectedOrder.shippingFee || 0)}</span></div>
                    {selectedOrder.discountAmount > 0 && (
                        <div className="sum-row discount"><span>Giảm giá:</span> <span>-{formatMoney(selectedOrder.discountAmount)}</span></div>
                    )}
-                   <div className="sum-row total"><span>Tổng cộng:</span> <span>{formatMoney(selectedOrder.totalAmount)}</span></div>
+                   <div className="sum-row total"><span>Tổng cộng:</span> <span>{formatMoney(selectedOrder.totalAmount || 0)}</span></div>
                 </div>
               </div>
 
@@ -241,6 +252,7 @@ const OrderManager = () => {
                         <option value="Confirmed">✅ Đã xác nhận (Confirmed)</option>
                         <option value="Delivering">🚚 Đang giao (Delivering)</option>
                         <option value="Delivered">🎁 Đã giao (Delivered)</option>
+                        <option value="Completed">🏁 Hoàn thành (Completed)</option>
                         <option value="Cancelled">❌ Hủy đơn (Cancelled)</option>
                     </select>
                     <button className="btn-save" onClick={updateStatus}>Lưu Trạng Thái</button>
