@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
+import { io } from "socket.io-client";
 import "./OrderManager.css";
 
 // Import hình ảnh
@@ -21,6 +22,18 @@ const OrderManager = () => {
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [tempStatus, setTempStatus] = useState("");
+  const [notification, setNotification] = useState(null);
+  const [notificationsList, setNotificationsList] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [filterCity, setFilterCity] = useState("");
+  const [filterDistrict, setFilterDistrict] = useState("");
+  const [filterWard, setFilterWard] = useState("");
+  const [filterPayment, setFilterPayment] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterKeyword, setFilterKeyword] = useState("");
+  const socketRef = useRef(null);
 
   const API_URL = "http://localhost:3000";
 
@@ -53,10 +66,20 @@ const OrderManager = () => {
     return imgCaPheDen;
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API_URL}/orders`);
+      // Build filter params
+      const params = {};
+      if (filterCity) params.city = filterCity;
+      if (filterDistrict) params.district = filterDistrict;
+      if (filterWard) params.ward = filterWard;
+      if (filterPayment) params.paymentMethod = filterPayment;
+      if (filterDateFrom) params.date_from = filterDateFrom;
+      if (filterDateTo) params.date_to = filterDateTo;
+      if (filterKeyword) params.keyword = filterKeyword;
+
+      const res = await axios.get(`${API_URL}/orders/filter`, { params });
       const sortedOrders = res.data.sort((a, b) => 
         new Date(b.orderDate) - new Date(a.orderDate)
       );
@@ -67,11 +90,105 @@ const OrderManager = () => {
     } finally {
       setLoading(false);
     }
+  }, [API_URL, filterCity, filterDistrict, filterWard, filterPayment, filterDateFrom, filterDateTo, filterKeyword]);
+  
+  // request Notification permission on mount
+  useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      Notification.requestPermission().then(() => {});
+    }
+  }, []);
+
+  const playBeep = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.value = 0.05;
+      o.connect(g); g.connect(ctx.destination);
+      o.start();
+      setTimeout(() => { o.stop(); ctx.close(); }, 200);
+    } catch (e) {
+      // ignore audio errors
+    }
   };
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+
+    // Kết nối Socket.io
+    socketRef.current = io(API_URL, {
+      transports: ["websocket", "polling"]
+    });
+
+    socketRef.current.on("connect", () => {
+      console.log("✅ Connected to Socket.io server");
+    });
+
+    // Listen event đơn hàng mới
+    socketRef.current.on("newOrder", (data) => {
+      console.log("📦 New order received:", data);
+      
+      // Hiển thị notification
+      const note = {
+        id: data.order?._id || Date.now().toString(),
+        message: data.message || "Có đơn hàng mới!",
+        order: data.order,
+        timestamp: data.timestamp || new Date().toISOString(),
+      };
+
+      setNotificationsList((prev) => [note, ...prev]);
+      setUnreadCount((c) => c + 1);
+      setNotification({ ...note });
+
+      // Desktop notification + sound
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          const title = note.message || 'Có đơn hàng mới!';
+          const money = note.order ? new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(note.order.totalAmount || 0) : '';
+          const body = note.order ? `Mã: #${note.order._id ? note.order._id.slice(-6).toUpperCase() : 'N/A'} • Tổng: ${money}` : '';
+          new Notification(title, { body });
+        } catch (e) {}
+      }
+      playBeep();
+
+      // Tự động refresh danh sách đơn hàng
+      fetchOrders();
+
+      // Tự động ẩn notification sau 5 giây
+      setTimeout(() => {
+        setNotification(null);
+      }, 5000);
+    });
+
+    socketRef.current.on("disconnect", () => {
+      console.log("❌ Disconnected from Socket.io server");
+    });
+
+    // Cleanup khi component unmount
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [fetchOrders]);
+
+  const handleBellClick = () => {
+    setShowNotifPanel((s) => !s);
+    setUnreadCount(0);
+  };
+
+  const handleOpenFromNotif = (note) => {
+    if (note && note.order) {
+      openModal(note.order);
+      setShowNotifPanel(false);
+    }
+  };
+
+  const handleDismissNotif = (id) => {
+    setNotificationsList((prev) => prev.filter(n => n.id !== id));
+  };
 
   const openModal = (order) => {
     setSelectedOrder(order);
@@ -123,12 +240,100 @@ const OrderManager = () => {
 
   return (
     <div className="order-container">
-      <h2 className="page-title">📦 Quản Lý Đơn Hàng</h2>
+
+      <div className="order-header">
+        <h2 className="page-title">📦 Quản Lý Đơn Hàng</h2>
+
+        <div className="notif-area">
+          <button className="notif-bell" onClick={handleBellClick} aria-label="Thông báo">
+            <span className="notif-icon">🔔</span>
+            {unreadCount > 0 && (<span className="notif-badge">{unreadCount}</span>)}
+          </button>
+
+          {showNotifPanel && (
+            <div className="notif-panel">
+              <div className="notif-panel-header">
+                <strong>Thông báo</strong>
+                <button className="notif-clear" onClick={() => setNotificationsList([])}>Xóa tất cả</button>
+              </div>
+              {notificationsList.length === 0 ? (
+                <div className="notif-empty">Không có thông báo</div>
+              ) : (
+                notificationsList.map((note) => (
+                  <div key={note.id} className="notif-item">
+                    <div className="notif-item-icon">📦</div>
+                    <div className="notif-item-body">
+                      <div className="notif-item-title">{note.message}</div>
+                      {note.order && (
+                        <div className="notif-item-details">
+                          <div>Mã: #{note.order._id ? note.order._id.slice(-6).toUpperCase() : 'N/A'}</div>
+                          <div>Khách: {note.order.deliveryAddress?.fullName || 'Khách vãng lai'}</div>
+                          <div>Tổng: {formatMoney(note.order.totalAmount || 0)}</div>
+                        </div>
+                      )}
+                      <div className="notif-item-actions">
+                        <button className="btn-notif-view" onClick={() => handleOpenFromNotif(note)}>Xem</button>
+                        <button className="btn-notif-close" onClick={() => handleDismissNotif(note.id)}>Đóng</button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Notification khi có đơn hàng mới */}
+      {notification && (
+        <div className="notification-toast">
+          <div className="notification-content">
+            <div className="notification-icon">🔔</div>
+            <div className="notification-text">
+              <strong>{notification.message}</strong>
+              {notification.order && (
+                <div className="notification-details">
+                  <span>Mã đơn: #{notification.order._id ? notification.order._id.slice(-6).toUpperCase() : "N/A"}</span>
+                  <span>•</span>
+                  <span>Khách: {notification.order.deliveryAddress?.fullName || "Khách vãng lai"}</span>
+                  <span>•</span>
+                  <span>Tổng: {formatMoney(notification.order.totalAmount || 0)}</span>
+                </div>
+              )}
+            </div>
+            <button 
+              className="notification-close" 
+              onClick={() => setNotification(null)}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="loading">Đang tải dữ liệu...</div>
       ) : (
-        <div className="table-responsive">
+        <>
+          <div className="filters-bar">
+            <input type="text" placeholder="Tìm kiếm (mã, tên, số điện thoại, món)" value={filterKeyword} onChange={(e) => setFilterKeyword(e.target.value)} />
+            <input type="text" placeholder="Thành phố" value={filterCity} onChange={(e) => setFilterCity(e.target.value)} />
+            <input type="text" placeholder="Quận/Huyện" value={filterDistrict} onChange={(e) => setFilterDistrict(e.target.value)} />
+            <input type="text" placeholder="Phường/Xã" value={filterWard} onChange={(e) => setFilterWard(e.target.value)} />
+            <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)}>
+              <option value="">Phương thức thanh toán</option>
+              <option value="Cash">Tiền mặt</option>
+              <option value="VNPAY">VNPAY</option>
+              <option value="MOMO">MOMO</option>
+              <option value="Card">Thẻ</option>
+            </select>
+            <label className="date-label">Từ: <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} /></label>
+            <label className="date-label">Đến: <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} /></label>
+            <button className="btn-apply-filters" onClick={() => fetchOrders()}>Áp dụng</button>
+            <button className="btn-clear-filters" onClick={() => { setFilterCity(""); setFilterDistrict(""); setFilterWard(""); setFilterPayment(""); setFilterDateFrom(""); setFilterDateTo(""); setFilterKeyword(""); fetchOrders(); }}>Xóa</button>
+          </div>
+
+          <div className="table-responsive">
           <table className="order-table">
             <thead>
               <tr>
@@ -168,6 +373,7 @@ const OrderManager = () => {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {selectedOrder && (

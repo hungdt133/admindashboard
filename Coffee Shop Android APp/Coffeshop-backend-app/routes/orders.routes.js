@@ -7,6 +7,17 @@ router.post("/", async (req, res) => {
   try {
     const order = await Order.create(req.body);
 
+    // Emit event qua Socket.io để thông báo đơn hàng mới
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("newOrder", {
+        message: "Có đơn hàng mới!",
+        order: order,
+        timestamp: new Date()
+      });
+      console.log("📢 Emitted newOrder event:", order._id);
+    }
+
     res.status(201).json({
       message: "Order created successfully",
       order,
@@ -133,22 +144,39 @@ router.get("/", async (req, res) => {
 // --- Lấy danh sách đơn theo userId và status (hỗ trợ not equal) ---
 router.get("/filter", async (req, res) => {
   try {
-    const { userId, status, status_ne } = req.query;
+    const { userId, status, status_ne, city, district, ward, paymentMethod, date_from, date_to, keyword } = req.query;
 
     let query = {};
 
-    if (userId) {
-      query.userId = userId;
+    if (userId) query.userId = userId;
+    if (status) query.status = status;
+    if (status_ne) query.status = { $ne: status_ne };
+
+    // area filtering (deliveryAddress)
+    if (city) query['deliveryAddress.city'] = city;
+    if (district) query['deliveryAddress.district'] = district;
+    if (ward) query['deliveryAddress.ward'] = ward;
+
+    // payment method
+    if (paymentMethod) query.paymentMethod = paymentMethod;
+
+    // date range (orderDate)
+    if (date_from || date_to) {
+      query.orderDate = {};
+      if (date_from) query.orderDate.$gte = new Date(date_from);
+      if (date_to) query.orderDate.$lte = new Date(date_to);
     }
 
-    // lọc status bằng
-    if (status) {
-      query.status = status;
-    }
-
-    // lọc status không bằng
-    if (status_ne) {
-      query.status = { $ne: status_ne };
+    // keyword search: search order id, customer name, phone, items.productName
+    if (keyword) {
+      const kw = keyword.trim();
+      const or = [
+        { _id: kw },
+        { 'deliveryAddress.fullName': { $regex: kw, $options: 'i' } },
+        { 'deliveryAddress.phone': { $regex: kw, $options: 'i' } },
+        { 'items.productName': { $regex: kw, $options: 'i' } },
+      ];
+      query.$or = or;
     }
 
     const orders = await Order.find(query);

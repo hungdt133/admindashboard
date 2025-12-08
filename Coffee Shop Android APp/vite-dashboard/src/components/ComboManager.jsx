@@ -276,8 +276,8 @@ const ComboManager = () => {
         <div className="empty-state">📭 Chưa có combo nào. Hãy tạo combo mới!</div>
       ) : (
         <div className="combo-grid">
-          {combos.map((combo) => (
-            <div key={combo._id} className="combo-card">
+          {combos.map((combo, comboIndex) => (
+            <div key={`${combo._id || 'combo'}-${comboIndex}`} className="combo-card">
               {combo.image_url && (
                 <div className="combo-image-container">
                   <img src={combo.image_url} alt={combo.name} className="combo-image" />
@@ -301,7 +301,7 @@ const ComboManager = () => {
                     <strong>📦 Bao gồm:</strong>
                     <ul>
                       {combo.items.map((item, idx) => (
-                        <li key={idx}>
+                        <li key={`${combo._id || 'combo'}-item-${idx}-${item.productId || item.productName || idx}`}>
                           {item.quantity}x {item.productName}
                         </li>
                       ))}
